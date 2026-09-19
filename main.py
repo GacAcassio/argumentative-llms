@@ -63,6 +63,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--semantics", type=str, choices=["dfquad", "qe", "eb"], default="dfquad"
     )
+    parser.add_argument("--num-samples", type=int, default=None)
     args = parser.parse_args()
 
     print("Loading model...")
@@ -84,6 +85,8 @@ if __name__ == "__main__":
 
     print("Loading dataset...")
     dataset = load_from_disk(args.dataset_name)
+    if args.num_samples is not None:
+        dataset = dataset.select(range(args.num_samples))
 
     if not args.baselines:
         if args.semantics == "qe":
