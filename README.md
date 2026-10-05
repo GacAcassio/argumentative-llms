@@ -6,6 +6,9 @@ To run the main experiments, please follow these steps:
 1. Install the required dependencies in requirements.txt. Note that, depending on the versions of HuggingFace models you use, you may need to update the `transformers` library to a more recent version.
 1. Run experiments using the `python3 main.py <OPTIONS>` command. For the list of available options, please run `python3 main.py -h`
 
+### Joint argument generation
+On this branch, the argument miner generates all arguments for a node in a single LLM call: the argument mining prompt asks for `--breadth` supporting and `--breadth` attacking arguments in a labelled format (`Support1: ...`, `Attack1: ...`), which is then parsed and split into support and attack nodes. Slots the model declines with `N/A` are left out of the tree, and `--max-new-tokens` is treated as a per-argument budget, so the joint call gets `2 * breadth` times as many tokens.
+
 ## Reproducibility Information
 The experiments in our paper were run using the package versions in `requirements.txt` on a locally customized distribution of `Ubuntu 22.04.2`. The used machine was equipped with two RTX 4090 24GB GPUs and an Intel(R) Xeon(R) w5-2455X processor.
 
