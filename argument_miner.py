@@ -14,77 +14,64 @@ class ArgumentMiner:
         self.generation_args = generation_args
 
     def generate_args_for_parent(self, parent, name, base_score_generator):
-        s_prompt, s_constraints, s_format_args = self.generate_prompt(
-            parent.get_arg(), support=True
+        """
+        Generates `breadth` supporting and `breadth` attacking arguments for the parent in a
+        single LLM call and adds them to the argument tree. Slots the LLM declined are kept as
+        "N/A" arguments (base score 0, so no influence) for logging and slot mapping, but are
+        not returned for further expansion.
+        """
+        prompt, constraints, format_args = self.generate_prompt(
+            parent.get_arg(), breadth=self.breadth
         )
-        sup = s_format_args(
+        # The token budget in generation_args is per argument; the joint call produces
+        # 2 * breadth arguments (plus their labels) in one completion
+        generation_args = dict(self.generation_args)
+        generation_args["max_new_tokens"] = (
+            generation_args.get("max_new_tokens", 128) * 2 * self.breadth
+        )
+        supports, attacks = format_args(
             self.llm_manager.chat_completion(
-                s_prompt,
+                prompt,
                 print_result=True,
                 trim_response=True,
-                **s_constraints,
-                **self.generation_args,
+                **constraints,
+                **generation_args,
             ),
-            s_prompt,
+            prompt,
         )
-        a_prompt, a_constraints, a_format_args = self.generate_prompt(parent.get_arg())
-        att = a_format_args(
-            self.llm_manager.chat_completion(
-                a_prompt,
-                print_result=True,
-                trim_response=True,
-                **a_constraints,
-                **self.generation_args,
-            ),
-            a_prompt,
-        )
-        sup_base_score = base_score_generator(sup, claim=parent.get_arg(), support=True)
-        att_base_score = base_score_generator(
-            att, claim=parent.get_arg(), support=False
-        )
-        s = grad.Argument(f"S{name}", sup, float(sup_base_score))
-        a = grad.Argument(f"A{name}", att, float(att_base_score))
-        self.argument_tree.add_support(s, parent)
-        self.argument_tree.add_attack(a, parent)
-        return s, a
+
+        children = []
+        for prefix, args, support in (("S", supports, True), ("A", attacks, False)):
+            for b, arg in enumerate(args, start=1):
+                base_score = base_score_generator(
+                    arg, claim=parent.get_arg(), support=support
+                )
+                child = grad.Argument(f"{prefix}{name}b{b}", arg, float(base_score))
+                if support:
+                    self.argument_tree.add_support(child, parent)
+                else:
+                    self.argument_tree.add_attack(child, parent)
+                if arg != "N/A":
+                    children.append(child)
+        return children
 
     def generate_arguments(self, statement, base_score_generator):
         """Generates arguments for and against a statement, up to the given breadth and depth."""
         self.argument_tree = grad.BAG()
         topic = grad.Argument(f"db0", statement, 0.5)
+        # Register the topic explicitly so it exists even if no arguments are generated
+        self.argument_tree.arguments[topic.name] = topic
         topic_base_score = base_score_generator(statement, topic=True)
-        
-        previous_layer = []
-        
+
+        previous_layer = [topic]
         for d in range(1, self.depth + 1):
             new_layer = []
-            
-            if d == 1:
-                for b in range(1, self.breadth + 1):
-                    s, a = self.generate_args_for_parent(
-                        parent=topic,
-                        name=f"db0←d{d}b{b}",
-                        base_score_generator=base_score_generator
-                    )
-                    
-                    if s.arg != "N/A":
-                        new_layer.append(s)
-                    if a.arg != "N/A":
-                        new_layer.append(a)
-            else:
-                for p in previous_layer:
-                    for b in range(1, self.breadth + 1):
-                        s, a = self.generate_args_for_parent(
-                            parent=p,
-                            name=f"{p.name}←d{d}b{b}",
-                            base_score_generator=base_score_generator
-                        )
-                        
-                        if s.arg != "N/A":
-                            new_layer.append(s)
-                        if a.arg != "N/A":
-                            new_layer.append(a)
-
+            for p in previous_layer:
+                new_layer += self.generate_args_for_parent(
+                    parent=p,
+                    name=f"{p.name}←d{d}",
+                    base_score_generator=base_score_generator,
+                )
             previous_layer = new_layer
 
         topic_base_score_bag = deepcopy(self.argument_tree)
