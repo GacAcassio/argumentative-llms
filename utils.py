@@ -20,15 +20,20 @@ def clean_argument(argument):
     return argument
 
 
-def extract_args(text, breadth=None):
+def extract_args(text, breadth):
     """
     Splits a joint generation of the form "Support1: ... Support2: ... Attack1: ..." into
-    lists of supporting and attacking arguments. Declined ("N/A"), empty and duplicate
-    arguments are dropped, and each list is truncated to at most `breadth` arguments.
+    lists of supporting and attacking arguments, each of length `breadth`. Arguments are
+    placed by their label number, so index i always corresponds to Support{i+1}/Attack{i+1};
+    declined ("N/A"), missing and duplicate arguments are returned as "N/A".
     """
     labels = list(ARG_LABEL_RE.finditer(text))
-    support_list, attack_list, seen = [], [], set()
+    slots = {"support": ["N/A"] * breadth, "attack": ["N/A"] * breadth}
+    seen = set()
     for i, match in enumerate(labels):
+        kind, index = match.group(1).lower(), int(match.group(2)) - 1
+        if not 0 <= index < breadth or slots[kind][index] != "N/A":
+            continue
         end = labels[i + 1].start() if i + 1 < len(labels) else len(text)
         # Ignore anything after a blank line following the last argument (e.g. commentary)
         body = text[match.end() : end]
@@ -38,14 +43,9 @@ def extract_args(text, breadth=None):
         if argument == "N/A" or argument.lower() in seen:
             continue
         seen.add(argument.lower())
-        if match.group(1).lower() == "support":
-            support_list.append(argument)
-        else:
-            attack_list.append(argument)
+        slots[kind][index] = argument
 
-    if breadth is not None:
-        support_list, attack_list = support_list[:breadth], attack_list[:breadth]
-    return support_list, attack_list
+    return slots["support"], slots["attack"]
 
 
 def construct_constraint_fun(

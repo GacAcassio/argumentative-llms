@@ -127,7 +127,8 @@ class ArgumentMiningPrompts:
     Argument mining prompts generating all `breadth` supporting and `breadth` attacking
     arguments for a statement in a single completion. Each prompt returns a tuple
     (prompt, constraints, formatter), where formatter(response, prompt) returns a pair of
-    lists (supporting arguments, attacking arguments), with declined slots omitted.
+    lists (supporting arguments, attacking arguments) of length `breadth`, with declined slots
+    given as "N/A".
     """
 
     @staticmethod

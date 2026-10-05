@@ -15,9 +15,10 @@ class ArgumentMiner:
 
     def generate_args_for_parent(self, parent, name, base_score_generator):
         """
-        Generates up to `breadth` supporting and `breadth` attacking arguments for the parent
-        in a single LLM call and adds them to the argument tree. Slots the LLM declined (N/A)
-        are not added, as they would carry a base score of 0 and thus no influence anyway.
+        Generates `breadth` supporting and `breadth` attacking arguments for the parent in a
+        single LLM call and adds them to the argument tree. Slots the LLM declined are kept as
+        "N/A" arguments (base score 0, so no influence) for logging and slot mapping, but are
+        not returned for further expansion.
         """
         prompt, constraints, format_args = self.generate_prompt(
             parent.get_arg(), breadth=self.breadth
@@ -50,7 +51,8 @@ class ArgumentMiner:
                     self.argument_tree.add_support(child, parent)
                 else:
                     self.argument_tree.add_attack(child, parent)
-                children.append(child)
+                if arg != "N/A":
+                    children.append(child)
         return children
 
     def generate_arguments(self, statement, base_score_generator):
