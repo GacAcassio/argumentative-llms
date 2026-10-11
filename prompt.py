@@ -1,5 +1,7 @@
 import re
 
+from utils import extract_args
+
 
 def baseline_formatter(response):
     if "false" in response.lower() and "true" in response.lower():
@@ -106,72 +108,82 @@ Now take a deep breath, think step by step and determine whether the statement i
         return prompt, constraints, baseline_formatter
 
 
-class ArgumentMiningPrompts:
-    @staticmethod
-    def chatgpt(statement, support=False, **_):
-        def formatter(argument, prompt):
-            if "N/A" in argument or "n/a" in argument:
-                return "N/A"
-            return re.sub(
-                " +",
-                " ",
-                "".join(re.findall(r"(.*[.?!])", argument.split("\n\n")[0])).strip(
-                    '"\n'
-                ),
-            )
+def joint_args_format(breadth):
+    """The labelled output template shared by all joint argument mining prompts."""
+    lines = [f"Support{i}: <supporting argument {i}>" for i in range(1, breadth + 1)]
+    lines += [f"Attack{i}: <attacking argument {i}>" for i in range(1, breadth + 1)]
+    return "\n".join(lines)
 
+
+def joint_args_formatter(breadth):
+    def formatter(response, prompt):
+        return extract_args(response, breadth=breadth)
+
+    return formatter
+
+
+class ArgumentMiningPrompts:
+    """
+    Argument mining prompts generating all `breadth` supporting and `breadth` attacking
+    arguments for a statement in a single completion. Each prompt returns a tuple
+    (prompt, constraints, formatter), where formatter(response, prompt) returns a pair of
+    lists (supporting arguments, attacking arguments) of length `breadth`, with declined slots
+    given as "N/A".
+    """
+
+    @staticmethod
+    def chatgpt(statement, breadth=1, **_):
         return (
             f"""
         Claim: {statement}
 
         Instructions:
-            Provide a concise argument {"supporting" if support else "opposing"} the claim in less than 2 sentences.
-            Utilize critical thinking and logical reasoning in your argument.
+            Provide {breadth} concise argument(s) supporting the claim and {breadth} concise argument(s) opposing the claim, each in less than 2 sentences.
+            Utilize critical thinking and logical reasoning in your arguments.
             Ensure clarity in your reasoning.
             Avoid circular reasoning or fallacious arguments.
-            If you cannot return a valid and convincing argument for this claim, reply N/A.
+            Each argument must address the claim directly (not the other arguments), be self-contained and make a distinct point that does not repeat any other argument.
+            If you cannot return a valid and convincing argument for a given slot, write N/A in its place.
 
-        {"Supporting" if support else "Opposing"} Argument for '{statement}':""",
+        Respond only with the arguments, using exactly the following format:
+{joint_args_format(breadth)}
+
+        Arguments for and against '{statement}':""",
             {},
-            formatter,
+            joint_args_formatter(breadth),
         )
 
     @staticmethod
-    def debater(statement, support=False, **_):
-        def formatter(argument, prompt):
-            if "N/A" in argument or "n/a" in argument:
-                return "N/A"
-            return argument
-
+    def debater(statement, breadth=1, **_):
         return (
             (
                 "You are a professional debater who will try to provide arguments on a topic even if "
-                "they go against your personal believes. Please give a brief, one-sentence argument "
-                f"{'in favour of' if support else 'against'} the statement:\n\nStatement: \"{statement}\"\n\n"
-                "Note that the provided argument should provide a clear justification why the considered "
-                f"statement is {'true and accurate' if support else 'untrue or inaccurate'}. "
-                "The argument should also be as self-contained as possible. "
-                "Please reply only with the argument sentence without any further commentary. "
-                "If you are truly unable to provide such an argument, reply N/A."
+                f"they go against your personal believes. Please give {breadth} brief, one-sentence "
+                f"argument(s) in favour of and {breadth} brief, one-sentence argument(s) against "
+                f'the statement:\n\nStatement: "{statement}"\n\n'
+                "Note that each argument in favour should provide a clear justification why the considered "
+                "statement is true and accurate, while each argument against should provide a clear "
+                "justification why the considered statement is untrue or inaccurate. "
+                "Each argument should also be as self-contained as possible, refer directly to the statement "
+                "rather than to the other arguments, and make a point distinct from all other arguments. "
+                "Please reply only with the argument sentences, without any further commentary, using exactly "
+                f"the following format:\n\n{joint_args_format(breadth)}\n\n"
+                "If you are truly unable to provide a particular argument, write N/A in its place."
             ),
             {},
-            formatter,
+            joint_args_formatter(breadth),
         )
 
     @staticmethod
-    def opro(statement, support=False, **_):
-        def formatter(argument, prompt):
-            if "N/A" in argument or "n/a" in argument:
-                return "N/A"
-            return argument
-
+    def opro(statement, breadth=1, **_):
         return (
-            f"""Please provide a single short argument {"supporting" if support else "attacking"} the following claim. Construct the argument so it refers to the truthfulness of the claim. Only provide an argument if you think there is a valid and convincing {"support" if support else "attack"} for this claim (there is a non-zero probability that the claim is true), otherwise return: N/A.
+            f"""Please provide {breadth} short argument(s) supporting and {breadth} short argument(s) attacking the following claim. Construct each argument so it refers to the truthfulness of the claim, and make sure the arguments are distinct from one another. Only provide an argument if you think there is a valid and convincing support or attack for this claim (there is a non-zero probability that the claim is true), otherwise write N/A in its place.
         Claim: {statement}
-        Now take a deep breath and come up with an argument.
-        Argument:""",
+        Use exactly the following format:
+{joint_args_format(breadth)}
+        Now take a deep breath and come up with the arguments.""",
             {},
-            formatter,
+            joint_args_formatter(breadth),
         )
 
 
