@@ -21,7 +21,7 @@ class LlmManager(ABC):
         self,
         prompt,
         print_result=False,
-        seed=42,
+        seed=None,
         max_new_tokens=128,
         do_sample=True,
         temperature=0.7,
@@ -66,12 +66,14 @@ class HuggingFaceLlmManager(LlmManager):
             },
         )
         self.input_device = input_device
+        # Seed torch from OS entropy so generations also differ between runs
+        torch.seed()
 
     def chat_completion(
         self,
         message,
         print_result=False,
-        seed=42,
+        seed=None,
         max_new_tokens=128,
         do_sample=True,
         temperature=0.7,
@@ -83,7 +85,9 @@ class HuggingFaceLlmManager(LlmManager):
         trim_response=True,
         apply_template=True,
     ):
-        transformers.set_seed(seed)
+        # Only reseed when a seed is given explicitly, so sampling differs between calls
+        if seed is not None:
+            transformers.set_seed(seed)
         messages = [{"role": "user", "content": message}]
         if apply_template:
             prompt = self.pipeline.tokenizer.apply_chat_template(
@@ -132,7 +136,7 @@ class OpenAiLlmManager(LlmManager):
         self,
         message,
         print_result=False,
-        seed=42,
+        seed=None,
         max_new_tokens=128,
         do_sample=True,
         temperature=0.7,
